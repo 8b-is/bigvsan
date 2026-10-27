@@ -12,7 +12,11 @@ Key Mathematical Contributions for BigVSAN:
 1. Z_{2^32} Modular Phase-Ring `SnakePq` & `SnakeBetaPq`:
    Replaces per-sample transcendental `sin(alpha * x)^2` in `activations.py` with
    modular integer phase wrap (`phase_u32 = int(x * step) & 0xFFFFFFFF`) and a
-   precomputed `p/q` (`q = 2^20`) sin^2 lookup table (`1.86x - 13.78x` speedup).
+   a precomputed `p/q` (`q = 2^20`) sin^2 lookup table, so the activation path
+   contains no per-sample transcendental. This targets hardware without a
+   transcendental unit (NPU/embedded) and fused/compiled kernels; on CPython the
+   pure-Python LUT path is actually slower than the C `math.sin` call
+   (`BIGVSAN_BENCH=1` measures ~0.5x).
 
 2. Bitplane Popcount Spherical Normalization for Slicing Adversarial Networks
    (`QuantumSANLinearPq` & `QuantumSANConv1dPq`):

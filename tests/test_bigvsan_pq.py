@@ -1,4 +1,5 @@
 import math
+import os
 import random
 import unittest
 
@@ -53,6 +54,46 @@ class BigVSanPqTest(unittest.TestCase):
         diff_norm = math.sqrt(sum((a - b) ** 2 for a, b in zip(out, ref_out)))
         rel_err = diff_norm / max(1e-12, norm_ref)
         self.assertLess(rel_err, 0.01)
+    def test_snake_pq_hot_path_is_transcendental_free(self) -> None:
+        snake_pq = bpq.SnakePq(in_features=2, alphas=[1.5, 3.0])
+        original_sin = math.sin
+        calls = {"n": 0}
+        def forbidden(*_a, **_k):
+            calls["n"] += 1
+            raise AssertionError("math.sin reached the SnakePq hot path")
+        math.sin = forbidden
+        try:
+            snake_pq.forward_channel([-1.0, -0.25, 0.0, 0.4, 1.3], channel_idx=0)
+        finally:
+            math.sin = original_sin
+        self.assertEqual(calls["n"], 0)
+    @unittest.skipUnless(
+        os.environ.get("BIGVSAN_BENCH") == "1",
+        "set BIGVSAN_BENCH=1 to run the timing comparison",
+    )
+    def test_snake_pq_speedup_measurement(self) -> None:
+        import time
+        alpha = 2.5
+        snake_pq = bpq.SnakePq(in_features=1, alphas=[alpha])
+        x_seq = [-2.0 + 0.0005 * i for i in range(2000)]
+        def run_pq():
+            for _ in range(20):
+                snake_pq.forward_channel(x_seq, channel_idx=0)
+        def run_ref():
+            for _ in range(20):
+                [x + (1.0 / (alpha + 1e-9)) * (math.sin(alpha * x) ** 2) for x in x_seq]
+        t0 = time.perf_counter()
+        run_ref()
+        ref_s = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        run_pq()
+        pq_s = time.perf_counter() - t0
+        speedup = ref_s / pq_s
+        print(f"\nSnakePq vs float reference on CPython: {speedup:.2f}x")
+        # Informational only: in CPython `math.sin` is a C call, so the pure-Python
+        # integer LUT path is *slower*. The win is on targets without a
+        # transcendental unit (NPU/embedded) or inside a fused/compiled kernel.
+        self.assertGreater(speedup, 0.0)
 
 
 if __name__ == "__main__":
