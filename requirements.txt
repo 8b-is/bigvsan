@@ -1,6 +1,6 @@
-torch==1.13.0
+torch==2.13.0
 numpy
-librosa==0.8.1
+librosa==0.11.0
 scipy
 tensorboard
 soundfile
